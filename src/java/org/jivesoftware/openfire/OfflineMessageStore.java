@@ -128,11 +128,13 @@ public class OfflineMessageStore extends BasicModule implements UserEventListene
         }
 		// ignore empty bodied message (typically chat-state notifications).
         if (message.getBody() == null || message.getBody().length() == 0) {
-        	// allow empty pubsub messages (OF-191)
-        	if (message.getChildElement("event", "http://jabber.org/protocol/pubsub#event") == null)
+        	// allow empty pubsub messages (OF-191) and empty MUC invitations
+        	if (message.getChildElement("event", "http://jabber.org/protocol/pubsub#event") == null && message.getChildElement("x", "http://jabber.org/protocol/muc#user")==null)
         	{ 
-        		return; 
+        		return;
         	}
+        	
+        	
         }
         JID recipient = message.getTo();
         String username = recipient.getNode();
@@ -142,7 +144,7 @@ public class OfflineMessageStore extends BasicModule implements UserEventListene
         }
         else
         if (!XMPPServer.getInstance().getServerInfo().getXMPPDomain().equals(recipient.getDomain())) {
-            // Do not store messages sent to users of remote servers
+            // Do not store messages sent to users of remote servers	
             return;
         }
 

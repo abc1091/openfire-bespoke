@@ -25,6 +25,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -76,6 +77,7 @@ public class DefaultRosterItemProvider implements RosterItemProvider {
              "SELECT jid, rosterID, sub, ask, recv, nick FROM ofRoster WHERE username=?";
     private static final String LOAD_ROSTER_ITEM_GROUPS =
             "SELECT rosterID,groupName FROM ofRosterGroups";
+    private static final int LOAD_ROSTER_ITEM_GROUPS_CHUNK_SIZE = 1000;
 
     /* (non-Javadoc)
 	 * @see org.jivesoftware.openfire.roster.RosterItemProvider#createItem(java.lang.String, org.jivesoftware.openfire.roster.RosterItem)
@@ -267,18 +269,26 @@ public class DefaultRosterItemProvider implements RosterItemProvider {
 
             // Load the groups for the loaded contact
             if (!itemList.isEmpty()) {
-                StringBuilder sb = new StringBuilder(100);
-                sb.append(LOAD_ROSTER_ITEM_GROUPS).append(" WHERE rosterID IN (");
-                for (RosterItem item : itemList) {
-                    sb.append(item.getID()).append(",");
-                }
-                sb.setLength(sb.length()-1);
-                sb.append(") ORDER BY rosterID, rank");
-                pstmt = con.prepareStatement(sb.toString());
-                rs = pstmt.executeQuery();
-                while (rs.next()) {
-                    itemsByID.get(rs.getLong(1)).getGroups().add(rs.getString(2));
-                }
+            	
+            	// If we have more than 1000 groups in our roster, we will issue multiple selects
+            	// to avoid being hit by database limits such as ORA-1795, which limits IN clauses to 
+            	// 1,000 terms
+            	int numberOfChunks = (itemList.size()+LOAD_ROSTER_ITEM_GROUPS_CHUNK_SIZE-1)/LOAD_ROSTER_ITEM_GROUPS_CHUNK_SIZE; //Round-up the number of chunks
+            	for (int chunk=0; chunk < numberOfChunks; chunk++) {
+	                StringBuilder sb = new StringBuilder(100);
+	                sb.append(LOAD_ROSTER_ITEM_GROUPS).append(" WHERE rosterID IN (");
+	                for (int idxInChunk=0; idxInChunk<LOAD_ROSTER_ITEM_GROUPS_CHUNK_SIZE && idxInChunk+chunk*LOAD_ROSTER_ITEM_GROUPS_CHUNK_SIZE< itemList.size(); idxInChunk++) {
+	                	RosterItem item = itemList.get(idxInChunk+chunk*LOAD_ROSTER_ITEM_GROUPS_CHUNK_SIZE);
+	                    sb.append(item.getID()).append(",");
+	                }
+	                sb.setLength(sb.length()-1);
+	                sb.append(") ORDER BY rosterID, rank");
+	                pstmt = con.prepareStatement(sb.toString());
+	                rs = pstmt.executeQuery();
+	                while (rs.next()) {
+	                    itemsByID.get(rs.getLong(1)).getGroups().add(rs.getString(2));
+	                }
+            	}
             }
         }
         catch (SQLException e) {

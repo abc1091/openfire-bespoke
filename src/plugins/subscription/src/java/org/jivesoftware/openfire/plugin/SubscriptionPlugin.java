@@ -16,6 +16,7 @@
 
 package org.jivesoftware.openfire.plugin;
 
+import org.apache.log4j.Logger;
 import org.jivesoftware.openfire.PresenceRouter;
 import org.jivesoftware.openfire.XMPPServer;
 import org.jivesoftware.openfire.container.Plugin;
@@ -40,11 +41,22 @@ import java.util.*;
  * acceptance from the other person. Conversely, when the plugin is set to
  * reject subscription requests users will not be able to add people to their
  * roster.
+ * There is also the option to add a mutual subscription when a subscription is
+ * accepted. What this means is:
+ * <ol>
+ * <li>userA@domain sends a subscription request to userB@domain
+ * <li>The subscription is automatically accepted on behalf of userB
+ * <li>A subscription from userB is also automatically accepted on behalf of userA
+ * </ol>
  * 
  * @author <a href="mailto:ryan@version2software.com">Ryan Graham</a>
+ * @author <a href="mailto:ashley.ward@surevine.com">Ashley Ward</a>
  */
 public class SubscriptionPlugin implements Plugin {
+	private static final Logger logger = Logger.getLogger(SubscriptionPlugin.class);
+	
     public static final String DISABLED = "disabled";
+    public static final String ACCEPT_MUTUAL = "accept_mutual";
     public static final String ACCEPT = "accept";
     public static final String REJECT = "reject";
     public static final String LOCAL = "local";
@@ -167,7 +179,11 @@ public class SubscriptionPlugin implements Plugin {
                     }
 
                     if (type.equals(ACCEPT)) {
-                        acceptSubscription(toJID, fromJID);
+                        acceptSubscription(toJID, fromJID, false);
+                    }
+
+                    if (type.equals(ACCEPT_MUTUAL)) {
+                        acceptSubscription(toJID, fromJID, true);
                     }
 
                     if (type.equals(REJECT)) {
@@ -177,7 +193,7 @@ public class SubscriptionPlugin implements Plugin {
             }
         }
 
-        private void acceptSubscription(JID toJID, JID fromJID) throws PacketRejectedException {
+        private void acceptSubscription(JID toJID, JID fromJID, boolean mutual) throws PacketRejectedException {
             if (getSubscriptionLevel().equals(LOCAL)) {
                 String toDomain = toJID.getDomain();
                 String fromDomain = fromJID.getDomain();
@@ -194,6 +210,24 @@ public class SubscriptionPlugin implements Plugin {
             presence.setTo(fromJID);
             presence.setFrom(toJID);
             router.route(presence);
+            
+            if(logger.isDebugEnabled()) {
+            	logger.debug("Sent subscribed presence: " + presence);
+            }
+            
+            // If we should mutually subscribe the other way too.
+            if(mutual) {
+                Presence mutualPresence = new Presence();
+                mutualPresence.setType(Presence.Type.subscribed);
+
+                mutualPresence.setTo(toJID);
+                mutualPresence.setFrom(fromJID);
+                router.route(mutualPresence);
+                
+                if(logger.isDebugEnabled()) {
+                	logger.debug("Sent mutual subscribed presence: " + presence);
+                }
+            }
 
             throw new PacketRejectedException();
         }
